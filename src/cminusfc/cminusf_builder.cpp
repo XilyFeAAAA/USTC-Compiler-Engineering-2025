@@ -58,9 +58,35 @@ Value* CminusfBuilder::visit(ASTNum &node) {
 }
 
 Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
-    // TODO: This function is empty now.
-    // Add some code here.
-    return nullptr;
+    Type* varType;
+    if (node.type == TYPE_INT){
+        varType = INT32_T;
+    }else if (node.type == TYPE_FLOAT){
+        varType = FLOAT_T;
+    }else{
+        std::cout << "未知的变量类型: " << node.type << std::endl;
+    }
+
+    if (node.num != nullptr){
+        varType = ArrayType::get(varType, node.num->i_val);
+    }
+    Value* alloc;
+    if (scope.in_global()) {
+        Constant* initVal;
+        if (varType->is_array_type())
+            initVal = ConstantZero::get(varType, module.get());
+        else if (varType->is_float_type())
+            initVal = CONST_FP(0.0);
+        else
+            initVal = CONST_INT(0);
+
+        alloc = GlobalVariable::create(node.id, module.get(), varType, false, initVal);
+    } else {
+        alloc = builder->create_alloca(varType);
+    }
+
+    scope.push(node.id, alloc);
+    return alloc;
 }
 
 Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
@@ -123,7 +149,15 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
 }
 
 Value* CminusfBuilder::visit(ASTParam &node) {
-    return nullptr;
+    Type* paramType = (node.type == TYPE_INT) ? INT32_T : FLOAT_T;
+    if (node.isarray) {
+        paramType = (node.type == TYPE_INT) ? INT32PTR_T : FLOATPTR_T;
+    }
+
+    auto *alloca = builder->create_alloca(paramType);
+
+    scope.push(node.id, alloca);
+    return alloca;
 }
 
 Value* CminusfBuilder::visit(ASTCompoundStmt &node) {
