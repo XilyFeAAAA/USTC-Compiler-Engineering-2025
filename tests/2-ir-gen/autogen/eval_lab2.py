@@ -111,9 +111,9 @@ suite = [
 
 def eval():
     f = open("eval_result", 'w')
-    EXE_PATH = "../../../build/cminusfc"
-    TEST_BASE_PATH = "./testcases/"
-    ANSWER_BASE_PATH = "./answers/"
+    EXE_PATH = "/home/xilyfe/USTC-Compiler-Engineering-2025/build/cminusfc"
+    TEST_BASE_PATH = "/home/xilyfe/USTC-Compiler-Engineering-2025/tests/2-ir-gen/autogen/testcases/"
+    ANSWER_BASE_PATH = "/home/xilyfe/USTC-Compiler-Engineering-2025/tests/2-ir-gen/autogen/answers/"
     total_points = 0
     for level in suite:
         lv_points = 0
@@ -123,6 +123,7 @@ def eval():
         cases = level[1]
         f.write('===========%s START========\n' % level_name)
         for case in cases:
+            print(f"====== Running {level_name}/{case} ======")
             f.write('%s:' % case)
             TEST_PATH = TEST_BASE_PATH + level_name + "/" + case
             ANSWER_PATH = ANSWER_BASE_PATH + level_name + "/" + case
@@ -133,11 +134,10 @@ def eval():
 
             try:
                 result = subprocess.run([EXE_PATH, "-o", TEST_PATH + ".ll", "-emit-llvm",
-                                        TEST_PATH + ".cminus"], stderr=subprocess.PIPE, timeout=1)
+                                        TEST_PATH + ".cminus"], timeout=1)
             except Exception as _:
                 f.write('\tFail\n')
                 continue
-
             if result.returncode == 0:
                 subprocess.run(["clang", "-O0", "-w", "-no-pie", TEST_PATH +
                                ".ll", "-o", TEST_PATH, "-L", "../../../build", "-lcminus_io"])
@@ -150,14 +150,17 @@ def eval():
                     result = subprocess.run(
                         COMMAND, input=input_option, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=1)
                     with open(ANSWER_PATH + ".out", "rb") as fout:
-                        if result.stdout == fout.read():
+                        correct_ans = fout.read();
+                        if result.stdout == correct_ans:
                             f.write('\tSuccess\n')
                             lv_points += score
                         else:
                             f.write('\tFail\n')
+                            print(f"{case} failed on output comparison: result {result.stdout}, {ANSWER_BASE_PATH}.out should be {correct_ans}")
                             has_bonus = False
                 except Exception as _:
                     f.write('\tFail\n')
+                    print(f"{case} execution failed {str(_)}")
                     has_bonus = False
                 finally:
                     subprocess.call(
@@ -165,6 +168,7 @@ def eval():
 
             else:
                 f.write('\tFail\n')
+                print(f"{case} failed to compile")
                 has_bonus = False
 
         if has_bonus:
@@ -174,7 +178,7 @@ def eval():
         f.write('points of %s is: %d\n' % (level_name, lv_points))
         f.write('===========%s END========\n\n' % level_name)
     f.write('total points: %d\n' % total_points)
-
+    print("over")
 
 if __name__ == "__main__":
     eval()
