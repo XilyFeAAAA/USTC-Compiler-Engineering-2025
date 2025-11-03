@@ -1,6 +1,0 @@
-add_subdirectory(parser)
-add_subdirectory(common)
-add_subdirectory(logging)
-add_subdirectory(cminusfc)
-add_subdirectory(lightir)
-add_subdirectory(io)
