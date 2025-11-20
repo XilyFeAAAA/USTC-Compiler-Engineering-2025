@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import subprocess
-import sys
-
 # 17
 lv0_1 = {
     "return": (3, False),
@@ -96,9 +94,10 @@ lv2 = {
 
 # 11
 lv3 = {
-    "complex1": (4, True),
+    "complex1": (3, False),
     "complex2": (3, True),
-    "complex3": (4, False),
+    "complex3": (2, True),
+    "complex4": (3, False),
 }
 
 suite = [
@@ -109,30 +108,13 @@ suite = [
     ("lv3", lv3, 0)
 ]
 
+
 def eval():
-    # 获取优化选项
-    opt_flags = []
-    if len(sys.argv) > 1:
-        for arg in sys.argv[1:]:
-            if arg == "dce":
-                opt_flags.append("-dce")
-            elif arg == "func-inline":
-                opt_flags.append("-func-inline")
-            elif arg == "const-prop":
-                opt_flags.append("-const-prop")
-
     f = open("eval_result", 'w')
-    EXE_PATH = "../../../build/cminusfc"
-    TEST_BASE_PATH = "./testcases/"
-    ANSWER_BASE_PATH = "./answers/"
+    EXE_PATH = "/home/xilyfe/USTC-Compiler-Engineering-2025/build/cminusfc"
+    TEST_BASE_PATH = "/home/xilyfe/USTC-Compiler-Engineering-2025/tests/2-ir-gen/autogen/testcases/"
+    ANSWER_BASE_PATH = "/home/xilyfe/USTC-Compiler-Engineering-2025/tests/2-ir-gen/autogen/answers/"
     total_points = 0
-    
-    # 写入使用的优化选项信息
-    if opt_flags:
-        f.write('Running with optimizations: %s\n\n' % ' '.join(opt_flags))
-    else:
-        f.write('Running without optimizations\n\n')
-
     for level in suite:
         lv_points = 0
         has_bonus = True
@@ -141,6 +123,7 @@ def eval():
         cases = level[1]
         f.write('===========%s START========\n' % level_name)
         for case in cases:
+            print(f"====== Running {level_name}/{case} ======")
             f.write('%s:' % case)
             TEST_PATH = TEST_BASE_PATH + level_name + "/" + case
             ANSWER_PATH = ANSWER_BASE_PATH + level_name + "/" + case
@@ -150,16 +133,11 @@ def eval():
             COMMAND = [TEST_PATH]
 
             try:
-                # 添加优化选项
-                cmd = [EXE_PATH, "-o", TEST_PATH + ".ll", "-emit-llvm"]
-                cmd.extend(opt_flags)  # 添加所有优化选项
-                cmd.append(TEST_PATH + ".cminus")
-                
-                result = subprocess.run(cmd, stderr=subprocess.PIPE, timeout=1)
+                result = subprocess.run([EXE_PATH, "-o", TEST_PATH + ".ll", "-emit-llvm",
+                                        TEST_PATH + ".cminus"], timeout=1)
             except Exception as _:
                 f.write('\tFail\n')
                 continue
-
             if result.returncode == 0:
                 subprocess.run(["clang", "-O0", "-w", "-no-pie", TEST_PATH +
                                ".ll", "-o", TEST_PATH, "-L", "../../../build", "-lcminus_io"])
@@ -172,14 +150,17 @@ def eval():
                     result = subprocess.run(
                         COMMAND, input=input_option, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=1)
                     with open(ANSWER_PATH + ".out", "rb") as fout:
-                        if result.stdout == fout.read():
+                        correct_ans = fout.read();
+                        if result.stdout == correct_ans:
                             f.write('\tSuccess\n')
                             lv_points += score
                         else:
                             f.write('\tFail\n')
+                            print(f"{case} failed on output comparison: result {result.stdout}, {ANSWER_BASE_PATH}.out should be {correct_ans}")
                             has_bonus = False
                 except Exception as _:
                     f.write('\tFail\n')
+                    print(f"{case} execution failed {str(_)}")
                     has_bonus = False
                 finally:
                     subprocess.call(
@@ -187,6 +168,7 @@ def eval():
 
             else:
                 f.write('\tFail\n')
+                print(f"{case} failed to compile")
                 has_bonus = False
 
         if has_bonus:
@@ -196,7 +178,7 @@ def eval():
         f.write('points of %s is: %d\n' % (level_name, lv_points))
         f.write('===========%s END========\n\n' % level_name)
     f.write('total points: %d\n' % total_points)
-
+    print("over")
 
 if __name__ == "__main__":
     eval()
