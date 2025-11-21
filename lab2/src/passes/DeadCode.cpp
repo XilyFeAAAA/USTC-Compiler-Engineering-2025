@@ -39,31 +39,62 @@ bool DeadCode::clear_basic_blocks(Function *func) {
 }
 
 void DeadCode::mark(Function *func) {
-    // TODO
-    
+    if (!func) return;
+    for (auto &bb : func->get_basic_blocks()) {
+        for (auto &bi : bb.get_instructions()) {
+            Instruction *i = &bi;
+            if (is_critical(i)) {
+                mark(i);
+            }
+        }
+    }
 }
 
 void DeadCode::mark(Instruction *ins) {
-    // TODO
+    if (!ins) return;
+    if (marked.find(ins) != marked.end()) return;
+    marked[ins] = true;
+
+    for (auto op : ins->get_operands()) {
+        if (!op) continue;
+        if (auto def_ins = dynamic_cast<Instruction *>(op)) {
+            mark(def_ins);
+        }
+    }
 }
 
 bool DeadCode::sweep(Function *func) {
-    // TODO: 删除无用指令
-    // 提示：
-    // 1. 遍历函数的基本块，删除所有标记为true的指令
-    // 2. 删除指令后，可能会导致其他指令的操作数变为无用，因此需要再次遍历函数的基本块
-    // 3. 如果删除了指令，返回true，否则返回false
-    // 4. 注意：删除指令时，需要先删除操作数的引用，然后再删除指令本身
-    // 5. 删除指令时，需要注意指令的顺序，不能删除正在遍历的指令
-    std::unordered_set<Instruction *> wait_del{};
-
-    // 1. 收集所有未被标记的指令
- 
-
-    // 2. 执行删除
-  
     
-    return not wait_del.empty(); // changed
+    for (auto &bb : func->get_basic_blocks()) {
+        std::vector<Instruction *> to_remove;
+
+        for (auto &instr : bb.get_instructions()) {
+            Instruction *ins = &instr;
+            if (marked.find(ins) == marked.end() || !marked[ins]) {
+                to_remove.push_back(ins);
+            }
+        }
+
+        if (to_remove.empty()) return false;
+
+        for (Instruction* ins : to_remove) {
+            if (!ins) continue;
+            auto users = ins->get_use_list();
+            for (auto &u : users) {
+                User *user = u.val_;
+                if (!user) continue;
+                if (auto ui = dynamic_cast<Instruction *>(user)) {
+                    ui->remove_operand(u.arg_no_);
+                }
+            }
+            ins->remove_all_operands();
+            bb.remove_instr(ins);
+            ins_count++;
+            delete ins;
+        }
+    }
+    
+    return true;
 }
 
 bool DeadCode::is_critical(Instruction *ins) {
