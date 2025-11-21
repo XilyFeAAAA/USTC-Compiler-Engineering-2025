@@ -1,4 +1,6 @@
 #include "cminusf_builder.hpp"
+#include "Constant.hpp"
+#include <iostream>
 
 #define CONST_FP(num) ConstantFP::get((float)num, module.get())
 #define CONST_INT(num) ConstantInt::get(num, module.get())
@@ -58,18 +60,13 @@ Value* CminusfBuilder::visit(ASTNum &node) {
 }
 
 Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
-    Type* varType;
-    if (node.type == TYPE_INT){
-        varType = INT32_T;
-    }else if (node.type == TYPE_FLOAT){
-        varType = FLOAT_T;
-    }else{
-        std::cout << "未知的变量类型: " << node.type << std::endl;
+    Type* elemType = (node.type == TYPE_INT) ? INT32_T : FLOAT_T;
+    Type* varType = elemType;
+
+    if (node.num != nullptr) { 
+        varType = ArrayType::get(elemType, node.num->i_val);
     }
 
-    if (node.num != nullptr){
-        varType = ArrayType::get(varType, node.num->i_val);
-    }
     Value* alloc;
     if (scope.in_global()) {
         Constant* initVal;
@@ -135,7 +132,8 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
         scope.push(args[i]->get_name(), param_i);
     }
     node.compound_stmt->accept(*this);
-    if (builder->get_insert_block()->get_terminator() == nullptr) 
+    // if (builder->get_insert_block()->get_terminator() == nullptr) 
+    if (!builder->get_insert_block()->is_terminated())
     {
         if (context.func->get_return_type()->is_void_type())
             builder->create_void_ret();
@@ -157,6 +155,7 @@ Value* CminusfBuilder::visit(ASTParam &node) {
     auto *alloca = builder->create_alloca(paramType);
 
     scope.push(node.id, alloca);
+
     return alloca;
 }
 
@@ -168,10 +167,11 @@ Value* CminusfBuilder::visit(ASTCompoundStmt &node) {
     }
 
     for (auto &stmt : node.statement_list) {
-        stmt->accept(*this);
-        if (builder->get_insert_block()->get_terminator() == nullptr)
-            break;
+        if (!builder->get_insert_block()->is_terminated()) {
+            stmt->accept(*this);
+        }
     }
+
     scope.exit();
     return nullptr;
 }
@@ -222,19 +222,23 @@ Value* CminusfBuilder::visit(ASTSelectionStmt &node) {
     return nullptr;
 }
 
+
 Value* CminusfBuilder::visit(ASTIterationStmt &node) {
     auto *function = builder->get_insert_block()->get_parent();
     auto *condBB = BasicBlock::create(module.get(), "", function);
     auto *loopBB = BasicBlock::create(module.get(), "", function);
     auto *endBB  = BasicBlock::create(module.get(), "", function);
 
+
     if (!builder->get_insert_block()->is_terminated()) {
         builder->create_br(condBB);
     }
 
+
     builder->set_insert_point(condBB);
     Value *cond_val = node.expression->accept(*this);
 
+    std::cout << "While condition value type: " << cond_val->get_type()->print() << std::endl;
     std::cout << "condBB:" << condBB->print() << std::endl;
     std::cout << "loopBB:" << loopBB->print() << std::endl;
     std::cout << "endBB:" << endBB->print() << std::endl;
@@ -245,9 +249,12 @@ Value* CminusfBuilder::visit(ASTIterationStmt &node) {
         cond_val = builder->create_zext(cond_val, INT32_T);
     }
 
+
     cond_val = builder->create_icmp_ne(cond_val, CONST_INT(0));
+    std::cout << "While condition comparison value type: " << cond_val->get_type()->print() << std::endl;
     builder->create_cond_br(cond_val, loopBB, endBB);
     
+
     builder->set_insert_point(loopBB);
     node.statement->accept(*this);
 
@@ -255,9 +262,12 @@ Value* CminusfBuilder::visit(ASTIterationStmt &node) {
         builder->create_br(condBB);
     }
 
+
     builder->set_insert_point(endBB);
+
     return nullptr;
 }
+
 
 Value* CminusfBuilder::visit(ASTReturnStmt &node) {
     if (node.expression == nullptr) {
@@ -471,7 +481,7 @@ Value* CminusfBuilder::visit(ASTCall &node) {
     std::vector<Value *> args;
     auto param_type = func->get_function_type()->param_begin();
     for (auto &arg : node.args) {
-        auto *arg_val = arg->accept(*this);
+        auto *arg_val = arg->accept(*this);            
         if (!arg_val->get_type()->is_pointer_type() &&
             *param_type != arg_val->get_type()) {
             if (arg_val->get_type()->is_integer_type()) {
@@ -483,6 +493,6 @@ Value* CminusfBuilder::visit(ASTCall &node) {
         args.push_back(arg_val);
         param_type++;
     }
-
+    
     return builder->create_call(static_cast<Function *>(func), args);
 }
