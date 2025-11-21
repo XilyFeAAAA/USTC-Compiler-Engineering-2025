@@ -1,11 +1,11 @@
 #include "DeadCode.hpp"
 #include "Instruction.hpp"
 #include "logging.hpp"
+#include <stdexcept>
 #include <memory>
 #include <vector>
 
 
-// 处理流程：两趟处理，mark 标记有用变量，sweep 删除无用指令
 void DeadCode::run() {
     bool changed{};
     func_info->run();
@@ -52,15 +52,16 @@ void DeadCode::mark(Function *func) {
 
 void DeadCode::mark(Instruction *ins) {
     if (!ins) return;
-    if (marked.find(ins) != marked.end()) return;
-    marked[ins] = true;
-
-    for (auto op : ins->get_operands()) {
-        if (!op) continue;
-        if (auto def_ins = dynamic_cast<Instruction *>(op)) {
-            mark(def_ins);
+    if (marked.find(ins) == marked.end()){
+        
+        marked[ins] = true;
+        for (auto op : ins->get_operands()) {
+            if (!op) continue;
+            if (auto ins = dynamic_cast<Instruction *>(op)) mark(ins);
         }
+
     }
+    
 }
 
 bool DeadCode::sweep(Function *func) {
@@ -68,8 +69,8 @@ bool DeadCode::sweep(Function *func) {
     for (auto &bb : func->get_basic_blocks()) {
         std::vector<Instruction *> to_remove;
 
-        for (auto &instr : bb.get_instructions()) {
-            Instruction *ins = &instr;
+        for (auto &bi : bb.get_instructions()) {
+            Instruction *ins = &bi;
             if (marked.find(ins) == marked.end() || !marked[ins]) {
                 to_remove.push_back(ins);
             }
@@ -98,13 +99,28 @@ bool DeadCode::sweep(Function *func) {
 }
 
 bool DeadCode::is_critical(Instruction *ins) {
-    // TODO: 判断指令是否是无用指令
-    // 提示：
-    // 1. 如果是函数调用，且函数是纯函数，则无用
-    // 2. 如果是无用的分支指令，则无用
-    // 3. 如果是无用的返回指令，则无用
-    // 4. 如果是无用的存储指令，则无用
-    
+    if (!ins) return false;
+    if (!ins->get_use_list().empty()) return true;
+
+    if (ins->is_call()) {
+        auto ci = static_cast<CallInst *>(ins);
+        auto cf = ci->func_;
+        bool pure = false;
+        try {
+            pure = func_info->is_pure_function(cf);
+        } catch (const std::out_of_range &) {
+            pure = false;
+        }
+        return !pure;
+    }
+
+    if (ins->is_br()) return true;
+
+    if (ins->is_ret()) return true;
+
+    if (ins->is_store()) return true;
+
+    return false;
 }
 
 void DeadCode::sweep_globally() {
