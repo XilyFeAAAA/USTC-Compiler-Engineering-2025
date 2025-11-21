@@ -1,4 +1,5 @@
 #include "DeadCode.hpp"
+#include "BasicBlock.hpp"
 #include "Instruction.hpp"
 #include "logging.hpp"
 #include <stdexcept>
@@ -14,24 +15,30 @@ void DeadCode::run() {
         for (auto &F : m_->get_functions()) {
             auto func = &F;
             changed |= clear_basic_blocks(func);
+            marked.clear();
             mark(func);
             changed |= sweep(func);
         }
+
+        sweep_globally();
     } while (changed);
     LOG_INFO << "dead code pass erased " << ins_count << " instructions";
 }
 
 bool DeadCode::clear_basic_blocks(Function *func) {
-    bool changed = 0;
+    bool changed = false;
     std::vector<BasicBlock *> to_erase;
     for (auto &bb1 : func->get_basic_blocks()) {
         auto bb = &bb1;
         if(bb->get_pre_basic_blocks().empty() && bb != func->get_entry_block()) {
             to_erase.push_back(bb);
-            changed = 1;
+            changed = true;
         }
     }
     for (auto &bb : to_erase) {
+        for (auto succ_bb : bb->get_succ_basic_blocks()) {
+            succ_bb->remove_pre_basic_block(bb);
+        }
         bb->erase_from_parent();
         delete bb;
     }
@@ -39,7 +46,6 @@ bool DeadCode::clear_basic_blocks(Function *func) {
 }
 
 void DeadCode::mark(Function *func) {
-    if (!func) return;
     for (auto &bb : func->get_basic_blocks()) {
         for (auto &bi : bb.get_instructions()) {
             Instruction *i = &bi;
@@ -51,7 +57,6 @@ void DeadCode::mark(Function *func) {
 }
 
 void DeadCode::mark(Instruction *ins) {
-    if (!ins) return;
     if (marked.find(ins) == marked.end()){
         
         marked[ins] = true;
@@ -66,6 +71,8 @@ void DeadCode::mark(Instruction *ins) {
 
 bool DeadCode::sweep(Function *func) {
     
+    bool res = false;
+
     for (auto &bb : func->get_basic_blocks()) {
         std::vector<Instruction *> to_remove;
 
@@ -76,10 +83,8 @@ bool DeadCode::sweep(Function *func) {
             }
         }
 
-        if (to_remove.empty()) return false;
-
         for (Instruction* ins : to_remove) {
-            if (!ins) continue;
+            res = true;
             auto users = ins->get_use_list();
             for (auto &u : users) {
                 User *user = u.val_;
@@ -95,7 +100,7 @@ bool DeadCode::sweep(Function *func) {
         }
     }
     
-    return true;
+    return res;
 }
 
 bool DeadCode::is_critical(Instruction *ins) {
